@@ -72,6 +72,38 @@ See [LICENSE file](LICENSE) or [here][License]
 
 Copyright (C) 2011-2015, Armory Technologies, Inc.
 
+## Docker & Docker Compose Usage
+
+### Build and Run with Docker Compose
+
+1. Build and start the services:
+   ```sh
+   docker-compose up --build
+   ```
+   This will start both the `bitcoind` and `armory-monitor` services.
+
+2. Access Armory's RPC interface on port 8223 (or as configured).
+
+3. To stop the services:
+   ```sh
+   docker-compose down
+   ```
+
+### Standalone Docker Build/Run
+
+1. Build the Docker image:
+   ```sh
+   docker build -t armory-monitor .
+   ```
+2. Run the container:
+   ```sh
+   docker run -it --rm -p 8223:8223 armory-monitor
+   ```
+
+> **Note:**
+> - The `docker-compose.yml` also runs a `bitcoind` service for blockchain backend. Adjust environment variables as needed for your setup.
+> - Data is persisted in Docker volumes (`bitcoind_data`, `armory_data`).
+> - For production, change the default RPC credentials in `docker-compose.yml`.
 
 [Armory Build Instructions]: https://bitcoinarmory.com/building-from-source
 [Windows Crypto Download]: http://www.cryptopp.com/#download
@@ -84,3 +116,128 @@ Copyright (C) 2011-2015, Armory Technologies, Inc.
 [Windows Py2Exe Download]:  http://www.py2exe.org/
 [License]: http://www.gnu.org/licenses/agpl.html
 [Donation Image]: https://chart.googleapis.com/chart?chs=250x250&cht=qr&chl=bitcoin:1ArmoryXcfq7TnCSuZa9fQjRYwJ4bkRKfv?&label=Armory+Donation
+
+# Bitcoin Armory Transaction Monitor
+
+This module integrates with Bitcoin Armory to monitor and analyze both Bitcoin and Ethereum transactions. It provides real-time analytics and transaction monitoring without requiring private keys.
+
+## Features
+
+- Monitors Bitcoin transactions in real-time using Armory's BDM system
+- Monitors Ethereum transactions using Web3
+- Provides detailed transaction analytics for both chains
+- Tracks active wallets and transaction volumes
+- Integrates with Redis for analytics storage
+- Uses environment variables for configuration
+- Compatible with Armory's existing transaction handling system
+- Supports both confirmed and pending transactions
+- MEV (Maximal Extractable Value) monitoring for Ethereum
+- No private keys required - read-only monitoring
+
+## Setup
+
+1. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+2. Set up environment variables (create a .env file):
+```
+# Bitcoin Configuration
+RPC_BTC_URL=http://127.0.0.1:8332
+RPC_BTC_USER=bitcoinrpc
+RPC_BTC_PASS=yourpassword
+
+# Ethereum Configuration
+RPC_ETH_URL=https://mainnet.infura.io/v3/your_infura_key
+
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+```
+
+3. Ensure Redis server is running on the configured host and port
+
+## Usage
+
+Run the transaction monitor:
+```bash
+python TransactionMonitor.py
+```
+
+The monitor will:
+- Connect to your Bitcoin node via RPC
+- Connect to Ethereum network via Web3
+- Register with Armory's BDM for Bitcoin notifications
+- Monitor transactions on both chains
+- Analyze and store transaction data
+- Track active wallets and volumes
+- Log analytics to Redis
+
+## Redis Analytics
+
+The monitor stores various analytics in Redis:
+
+### Bitcoin Analytics
+- `faithswarm:btc_stats` - Hash containing:
+  - active_wallets: Number of active Bitcoin wallets
+  - total_transactions: Total transactions monitored
+  - total_volume: Total transaction volume
+  - last_update: Timestamp of last update
+- `faithswarm:btc_analysis` - List of detailed transaction analyses including:
+  - Transaction hash
+  - Timestamp
+  - Size
+  - Input/output counts
+  - Total output value
+  - Involved addresses
+
+### Ethereum Analytics
+- `faithswarm:eth_stats` - Hash containing:
+  - active_wallets: Number of active Ethereum wallets
+  - total_transactions: Total transactions monitored
+  - total_volume: Total transaction volume in ETH
+  - last_update: Timestamp of last update
+- `faithswarm:eth_analysis` - List of detailed transaction analyses including:
+  - Transaction hash
+  - From/To addresses
+  - Value in ETH
+  - Gas usage and price
+  - Block number
+  - Transaction status
+
+### Error Logging
+- `faithswarm:errors` - List of error messages (prefixed with "btc_error:" or "eth_error:")
+
+## Security Notes
+
+- No private keys required - read-only monitoring
+- All sensitive data is stored in environment variables
+- Redis should be properly secured in production
+- Use a dedicated Ethereum node or trusted provider for production use
+- Monitor has no ability to send transactions
+
+## Integration with Armory
+
+The TransactionMonitor class integrates with Armory's existing systems:
+- Uses BDM for Bitcoin blockchain monitoring
+- Handles both confirmed and zero-confirmation Bitcoin transactions
+- Maintains compatibility with Armory's transaction handling
+- Uses Armory's logging system for consistency
+- Adds Ethereum monitoring capabilities while preserving Bitcoin functionality
+
+## Error Handling
+
+- All errors are logged to both Armory's logging system and Redis
+- Network issues are handled gracefully with retries
+- Connection status is verified on startup
+- Separate error tracking for Bitcoin and Ethereum operations
+
+## MEV Monitoring
+
+The Ethereum monitoring includes MEV (Maximal Extractable Value) capabilities:
+- Monitors pending transactions in the mempool
+- Tracks both transaction senders and recipients
+- Analyzes transaction patterns and volumes
+- Provides insights into transaction timing and gas usage
+- Maintains separate tracking for MEV-related transactions

@@ -1,0 +1,148 @@
+version: '3.8'
+
+services:
+  # Primary Bitcoin Node
+  bitcoind_primary:
+    image: ruimarinho/bitcoin-core:latest
+    container_name: bitcoin-armory-primary
+    command: -printtoconsole -server 
+      -rpcuser=${BTC_RPC_USER} 
+      -rpcpassword=${BTC_RPC_PASS} 
+      -rpcallowip=172.16.0.0/12 
+      -rpcbind=0.0.0.0 
+      -txindex=1 
+      -prune=0 
+      -maxconnections=300
+      -zmqpubrawtx=tcp://0.0.0.0:28332
+      -zmqpubrawblock=tcp://0.0.0.0:28332
+    ports:
+      - "8332:8332"
+      - "8333:8333"
+      - "28332:28332"
+    volumes:
+      - bitcoin-primary-data:/home/bitcoin/.bitcoin
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+    restart: unless-stopped
+    networks:
+      - armory-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # Fast Bitcoin Node
+  bitcoind_fast:
+    image: ruimarinho/bitcoin-core:latest
+    container_name: bitcoin-armory-fast
+    command: -printtoconsole -server 
+      -rpcuser=${BTC_RPC_USER} 
+      -rpcpassword=${BTC_RPC_PASS} 
+      -rpcallowip=172.16.0.0/12 
+      -rpcbind=0.0.0.0 
+      -txindex=1 
+      -prune=0 
+      -maxconnections=500 
+      -maxmempool=4000
+      -zmqpubrawtx=tcp://0.0.0.0:28333
+      -zmqpubrawblock=tcp://0.0.0.0:28333
+    ports:
+      - "8334:8332"
+      - "8335:8333"
+      - "28333:28333"
+    volumes:
+      - bitcoin-fast-data:/home/bitcoin/.bitcoin
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    restart: unless-stopped
+    networks:
+      - armory-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # Redis for caching and analytics
+  redis:
+    image: redis:latest
+    container_name: bitcoin-armory-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 2gb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+    restart: unless-stopped
+    networks:
+      - armory-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # Transaction Monitor
+  tx_monitor:
+    build: .
+    container_name: bitcoin-armory-txmonitor
+    environment:
+      - RPC_BTC_URLS=http://bitcoind_primary:8332,http://bitcoind_fast:8332
+      - RPC_BTC_USER=${BTC_RPC_USER}
+      - RPC_BTC_PASS=${BTC_RPC_PASS}
+      - RPC_ETH_URL=https://mainnet.infura.io/v3/6c2abfe21bec41919e0a36c0847f9413
+      - REDIS_HOSTS=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - TARGET_AMOUNT=${TARGET_AMOUNT}
+      - NODE_SWARM_ENABLED=true
+      - MEV_ENABLED=true
+      - MEV_MIN_PROFIT=${MEV_MIN_PROFIT}
+      - MEV_MAX_GAS=${MEV_MAX_GAS}
+      - LOG_LEVEL=INFO
+      - NODE_HEALTH_CHECK_INTERVAL=60
+      - TRANSACTION_BATCH_SIZE=100
+    volumes:
+      - ./:/app
+      - tx-monitor-logs:/app/logs
+    depends_on:
+      - bitcoind_primary
+      - bitcoind_fast
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    restart: unless-stopped
+    networks:
+      - armory-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+networks:
+  armory-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  bitcoin-primary-data:
+  bitcoin-fast-data:
+  redis-data:
+  tx-monitor-logs: 
